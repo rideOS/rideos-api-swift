@@ -1,0 +1,161 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.dispatch.v3.resources;
+option java_package = "ai.rideos.api.dispatch.v3.resources";
+option java_outer_classname = "DispatchResources";
+option objc_class_prefix = "DispatchResources";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+import "rideos/dispatch/v3/common/common.proto";
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Resource API (v3)"
+        version: "3.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed the correct API Key.";
+        }
+    }
+    responses: {
+        key: "403"
+        value: {
+            description: "Returned when the user does not have permission to access the resource.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+message CreateGenericResourceRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["resource"]
+        }
+    };
+    common.GenericResource resource = 1;
+}
+
+message CreateGenericResourceResponse {
+    common.GenericResource resource = 1;
+}
+
+message GetGenericResourceRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["resourceId"]
+        }
+    };
+    string resource_id = 1;
+}
+
+message GetGenericResourceResponse {
+    common.GenericResource resource = 1;
+}
+
+message GetAllGenericResourcesRequest {
+}
+
+message GetGenericResourcesByIdRequest {
+    repeated string resource_ids = 1;
+}
+
+message GetGenericResourcesResponse {
+    map<string, common.GenericResource> resources = 1;
+}
+
+message DeleteGenericResourceRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["resourceId"]
+        } };
+    string resource_id = 1;
+}
+
+message DeleteGenericResourceResponse {
+}
+
+service ResourceService {
+    // Create generic resource
+    //
+    // Creates a generic resource. A generic resource can be used when the items are interchangeable. This means any
+    // vehicle with this resource can fulfill an order. Generic resources are pre-added to inventory. Metadata can be
+    // included and the capacities of the resource can be defined (e.g. 4 seats, 8 boxes, 15 kg).
+    rpc CreateGenericResource (CreateGenericResourceRequest) returns (CreateGenericResourceResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-resources/v3/CreateGenericResource"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Resource API (v3)"
+        };
+    }
+
+    // Get generic resource
+    //
+    // Gets a generic resource by the resource ID.
+    rpc GetGenericResource (GetGenericResourceRequest) returns (GetGenericResourceResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-resources/v3/GetGenericResource"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Resource API (v3)"
+        };
+    }
+
+    // Get generic resources by id
+    //
+    // Gets a map of generic resources by their IDs.
+    rpc GetGenericResourcesById (GetGenericResourcesByIdRequest) returns (GetGenericResourcesResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-resources/v3/GetGenericResourcesById"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Resource API (v3)"
+        };
+    }
+
+    // Get all generic resources
+    //
+    // Gets all the generic resources that have been created for an account.
+    rpc GetAllGenericResources (GetAllGenericResourcesRequest) returns (GetGenericResourcesResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-resources/v3/GetAllGenericResources"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Resource API (v3)"
+        };
+    }
+}

@@ -1,0 +1,155 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.dispatch.v3.vehicles.position;
+option java_package = "ai.rideos.api.dispatch.v3.vehicles.position";
+option java_outer_classname = "DispatchVehiclePosition";
+option objc_class_prefix = "DispatchVehiclePosition";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+import "rideos/geo/v1/geo.proto";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Vehicle Position API (v3)"
+        version: "3.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed the correct API Key.";
+        }
+    }
+    responses: {
+        key: "403"
+        value: {
+            description: "Returned when the user does not have permission to access the resource.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+// The position and heading of a vehicle
+message VehiclePosition {
+    geo.v1.Position position = 1;
+    google.protobuf.FloatValue heading = 2;
+}
+
+message GetVehiclePositionRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicleId"]
+        }
+    };
+    string vehicle_id = 1;
+}
+
+message GetVehiclePositionResponse {
+    VehiclePosition vehicle_position = 1;
+}
+
+message GetVehiclePositionsByIdRequest {
+    repeated string vehicle_ids = 1;
+}
+
+message GetVehiclePositionsResponse {
+    map<string, VehiclePosition> vehicle_positions = 1;
+}
+
+message UpdateVehiclePositionRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicleId", "vehiclePosition"]
+        } };
+    string vehicle_id = 1;
+    VehiclePosition vehicle_position = 2;
+    // Optional. If not set, the current timestamp will be used.
+    google.protobuf.Timestamp recorded_at = 3;
+    // If set to true, we will return an error when a position cannot be matched to our base map.
+    google.protobuf.BoolValue enforce_match = 4;
+}
+
+message UpdateVehiclePositionResponse {
+    VehiclePosition vehicle_position = 1;
+}
+
+message DeleteVehiclePositionRequest {
+    string vehicle_id = 1;
+}
+
+message DeleteVehiclePositionResponse {
+
+}
+
+service VehiclePositionService {
+    // Get vehicle position
+    //
+    // Get the latest position for a given vehicle.
+    rpc GetVehiclePosition (GetVehiclePositionRequest) returns (GetVehiclePositionResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicle-position/v3/GetVehiclePosition"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle Position API (v3)"
+        };
+    }
+
+    // Get vehicle positions by ID
+    //
+    // Get one or more vehicle positions by vehicle ID.
+    rpc GetVehiclePositionsById (GetVehiclePositionsByIdRequest) returns (GetVehiclePositionsResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicle-position/v3/GetVehiclePositionsById"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle Position API (v3)"
+        };
+    }
+
+    // Update vehicle position
+    //
+    // Update a vehicle's position. An optional timestamp can be provided for when the position is recorded.
+    // Additionally, you can enforce whether the position has to be matched to our base map or not.
+    rpc UpdateVehiclePosition (UpdateVehiclePositionRequest) returns (UpdateVehiclePositionResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicle-position/v3/UpdateVehiclePosition"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle Position API (v3)"
+        };
+    }
+
+}

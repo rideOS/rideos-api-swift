@@ -1,0 +1,76 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.dispatch.v3.common;
+option java_package = "ai.rideos.api.dispatch.v3.common";
+option java_outer_classname = "DispatchCommon";
+option objc_class_prefix = "DispatchCommon";
+
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+
+message Metadata {
+    map<string, string> data = 1;
+}
+
+message ContactInfo {
+    string name = 1;
+    string phone_number = 2;
+    string contact_url = 3;
+}
+
+message Capacity {
+    // e.g. "seat", "boxes", "weight (kg)"
+    string capacity_type = 1;
+    // e.g. 4 seats, 8 boxes, 15 kg
+    uint32 value = 2;
+}
+
+// Unique resources are a resource that cannot be interchanged with any other resources. The item must be picked up
+// from a specified location and then dropped off. Examples: passengers, custom food orders
+message UniqueResource {
+    repeated Capacity required_capacities = 1;
+    Metadata metadata = 2;
+}
+
+// Generic resources are a resource that can be interchanged with identical items from vehicle inventory. Examples:
+// meal kits, pharmacy items
+message GenericResource {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["resourceId"]
+        } };
+    string resource_id = 1;
+    // Specify how much capacity is required to hold this item in vehicle inventory
+    repeated Capacity required_capacities = 2;
+    Metadata metadata = 3;
+}
+
+message GenericResourceAndCount {
+    string resource_id = 1;
+    uint32 count = 2;
+}
+
+// A group of one or more generic resources that has been requested to be dropped off
+message GenericResourceGroup {
+    repeated GenericResourceAndCount generic_resources = 1;
+}
+
+// Inventory consists of any amount of generic resources that a vehicle currently contains.
+message Inventory {
+    repeated GenericResourceAndCount resources = 1;
+}

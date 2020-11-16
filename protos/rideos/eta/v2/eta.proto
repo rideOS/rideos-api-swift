@@ -1,0 +1,197 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.eta.v2;
+option java_package = "ai.rideos.api.eta.v2";
+option java_outer_classname = "EtaProto";
+
+import "rideos/geo/v1/geo.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// EtaService
+//
+// The EtaService provides estimated time of arrival information
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "ETA API"
+        version: "2.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed in the correct API Key.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+service EtaService {
+    // Retrieve ETA from origins to destinations
+    rpc GetEta (EtaRequest) returns (EtaResponse) {
+        option (google.api.http) = {
+                post: "/eta/v2/GetEta"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "ETA API (v2)"
+            };
+    }
+}
+
+
+message EtaRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["origins", "destinations"]
+        }
+    };
+
+    repeated Waypoint origins = 1;
+    repeated Waypoint destinations = 2;
+
+    // Optional: Time of departure from the origin in UTC. If not specified, departure time is assumed to be the time at
+    // which the ETA request is processed.
+    google.protobuf.Timestamp departure_time = 3;
+
+    repeated string vehicle_ids = 4 [deprecated = true];
+
+    enum CurbApproach {
+        UNSPECIFIED = 0; // We will not consider the driving direction when snapping the waypoints
+        DRIVING_SIDE = 1; // We will snap points according to the driving direction of the country
+    }
+
+    // Optional: Specify which side of the street the waypoints should snap to.
+    CurbApproach curb_approach = 5;
+
+    // Deprecated. Use avoid constraints instead.
+    repeated string blacklist_constraint_ids = 6 [deprecated = true];
+    // Deprecated. Use operational constraints instead.
+    repeated string whitelist_constraint_ids = 7 [deprecated = true];
+    
+
+
+    // Optional: If set to true the request will contain violated_constraints_from_origin which indicates if any constrains
+    // have been violated between corresponding origin and destination.
+    bool with_violated_constraints = 9;
+
+    // Optional: the ETA will be calculated using a path that will avoid traversing the constraints. They take precedence over
+    // operational constraints if both are specified.
+    // If a routing profile is specified, constraints are appended to the routing profile constraints.
+    repeated string avoid_constraint_ids = 10;
+
+    // Optional: if provided, this list of identifiers defines an operational domain. The domain consists of the union of all
+    // constraints listed. The path will avoid traversing edges that are not in this operational domain. Avoid constraints
+    // take precedence over operational constraints if both are specified.
+    // If a routing profile is specified, constraints are appended to the routing profile constraints.
+    repeated string operational_constraint_ids = 11;
+
+    // Optional: Routing profile to use for this request.
+    // New profiles can be added and updated via the Routing Profile API.
+    // If no value is provided, the default profile for motorized vehicles (e.g. cars, motorcycles) is used.
+    string routing_profile_id = 12;
+
+    // `[departure_time, departure_time_end]` for which one or more ETAs will be returned, depending on the size of the
+    // schedule window. Timestamp should be specified in UTC.
+    google.protobuf.Timestamp departure_time_end = 13;
+
+    // fall outside of Mantis partition regions.
+    bool with_out_of_bounds = 14;
+}
+
+message Waypoint {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["position"]
+        } };
+    geo.v1.Position position = 1;
+    google.protobuf.FloatValue heading = 2;
+}
+
+message EtaResponse {
+    repeated Waypoint origins = 1;
+    repeated Waypoint destinations = 2;
+
+    // Time of departure from the origin. Will be equal to the request's departure_time if that was set. If not, this
+    // will be equal to the assumed time of departure based on when the request was processed.
+    google.protobuf.Timestamp departure_time = 3;
+
+    message DoubleRow {
+        // Every entry encodes the double value to the j-th destination from a given origin
+        repeated double to_destination = 1;
+    }
+
+    message BooleanRow {
+        // Every entry encodes the boolean value to the j-th destination from a given origin
+        repeated bool to_destination = 1;
+    }
+
+    // Every entry encodes the travel time from the i-th origin to all destinations.
+    // As a result, `travel_time_from_origin[i].to_destination[j]` encodes the travel time from the i-th origin to the j-th destination.
+    // If path between origin and destination wasn't found the corresponding element will be set to "Infinity".
+    repeated DoubleRow travel_time_from_origin = 4;
+
+    // Every entry encodes the distance from the i-th origin to all destinations.
+    // As a result, `distance_from_origin[i].to_destination[j]` encodes the distance in meters from the i-th origin to the j-th destination.
+    // If path between origin and destination wasn't found the corresponding element will be set to "Infinity".
+    repeated DoubleRow distance_from_origin = 5;
+
+    // Each entry indicates if any constraints have been violated between corresponding origin and destination.
+    repeated BooleanRow violated_constraints_from_origin = 6;
+
+    message EtaProfile {
+        google.protobuf.Timestamp start_time = 1;
+        google.protobuf.Timestamp end_time = 2;
+        repeated DoubleRow travel_time_from_origin = 3;
+        repeated DoubleRow distance_from_origin = 4;
+        repeated BooleanRow violated_constraints_from_origin = 5;
+    }
+
+    // `eta_profile[t].travel_time_from_origin[i].to_destination[j]` encodes the travel time from the i-th origin
+    // to the j-th destination during the t-th ETA window, which spans from `[eta_profile[t].start_time, eta_profile[t].end_time]`.
+    // `eta_profile[t].distance_from_origin[i].to_destination[j]` encodes the same information, but for distance in meters
+    // instead of travel time.
+    // `eta_profile[0].start_time` will be the `departure_time` and `eta_profile[T].end_time` (where `T` is the last window) is
+    // equal to the `departure_time_end` specified in the request.
+    // Note that although the API technically allows for eta_profiles to be non-contiguous (since each EtaProfile contains
+    // its own start_time and end_time), EtaService will always return contiguous eta_profiles such that
+    // eta_profile[t].end_time == eta_profile[t+1].start_time
+    repeated EtaProfile eta_profile = 7;
+
+    // Mantis partition regions. Only set if `with_out_of_bounds` in Request set to true.
+    repeated BooleanRow out_of_bounds_from_origin = 8;
+}

@@ -1,0 +1,261 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.dispatch.v3.fleets;
+option java_package = "ai.rideos.api.dispatch.v3.fleets";
+option java_outer_classname = "DispatchFleets";
+option objc_class_prefix = "DispatchFleets";
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/duration.proto";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+import "rideos/commons/fleet_planner_commons.proto";
+import "rideos/dispatch/v3/common/common.proto";
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Fleet API (v3)"
+        version: "3.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed the correct API Key.";
+        }
+    }
+    responses: {
+        key: "403"
+        value: {
+            description: "Returned when the user does not have permission to access the resource.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+message Fleet {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["fleetId"]
+        }
+    };
+    string fleet_id = 1;
+    string display_name = 2;
+    common.Metadata metadata = 3;
+    FleetOptimizationSettings optimization_settings = 4;
+    google.protobuf.StringValue routing_profile_id = 5;
+}
+
+message FleetOptimizationSettings {
+    // Optional. Set to true to force all tasks to be private
+    google.protobuf.BoolValue force_private_rides = 1;
+    // Optional. Set to true to allow tasks to be reassigned to a different vehicle before being picked up
+    google.protobuf.BoolValue enable_vehicle_reassignment = 2;
+    // Optional. Set the expected time that the `LOAD_RESOURCE` step will take for vehicles
+    google.protobuf.Duration expected_pickup_service_time_duration = 6;
+    // Optional. Set the expected time that the `UNLOAD_RESOURCE` step will take for vehicles
+    google.protobuf.Duration expected_dropoff_service_time_duration = 3;
+    RelativeTimeWindow required_pickup_time_window = 4;
+    RelativeTimeWindow required_dropoff_time_window = 8;
+    rideos.fleet_planner_commons.VehicleReassignmentConfiguration vehicle_reassignment_configuration = 5;
+    OptimizationProfileWrapper optimization_profile = 7;
+    google.protobuf.BoolValue allow_out_of_bounds_assignments = 9;
+}
+
+// Optional. Set to override what costs we consider when optimizing the fleet.
+message OptimizationProfileWrapper {
+    rideos.fleet_planner_commons.OptimizationProfile value = 7;
+}
+
+// Optional. Set the time window relative to task creation that a resource must be picked up/dropped off after and before.
+// This will be overwritten if specified by a specific task in the dispatch parameters.
+message RelativeTimeWindow {
+    google.protobuf.Duration earliest_relative_time = 1;
+    google.protobuf.Duration latest_relative_time = 2;
+}
+
+message CreateFleetRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["fleet"]
+        }
+    };
+    Fleet fleet = 1;
+}
+
+message CreateFleetResponse {
+    Fleet fleet = 1;
+}
+
+message GetFleetRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["fleetId"]
+        }
+    };
+    // The fleet identifier used when creating a fleet via CreateFleet
+    string fleet_id = 1;
+}
+
+message GetFleetResponse {
+    Fleet fleet = 1;
+}
+
+message GetAllFleetsRequest {
+}
+
+message GetAllFleetsResponse {
+    // Map of fleetId as key and Fleet object as value.
+    map<string, Fleet> fleets = 1;
+}
+
+message UpdateFleetRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["fleetId"]
+        }
+    };
+    string fleet_id = 1;
+    google.protobuf.StringValue updated_display_name = 2;
+    common.Metadata updated_metadata = 3;
+    FleetOptimizationSettings updated_optimization_settings = 4;
+    // New routing profile id to use as the fleet's default. Warning: updating routing profile may invalidate existing
+    // vehicle plans by making some of its tasks inaccessible within time windows. Pass an empty string to clear routing
+    // profile.
+    google.protobuf.StringValue updated_routing_profile_id = 5;
+}
+
+message UpdateFleetResponse {
+    Fleet fleet = 1;
+}
+
+message DeleteFleetRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["fleetId"]
+        }
+    };
+    string fleet_id = 1;
+}
+
+message DeleteFleetResponse {
+    Fleet fleet = 1;
+}
+
+message TriggerOptimizationRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["fleetId"]
+        } };
+    string fleet_id = 1;
+}
+
+message TriggerOptimizationResponse {
+}
+
+service FleetService {
+    // Create fleet
+    //
+    // Initialize a new fleet and returns the created fleet. This is required before adding any vehicles or requesting tasks.
+    rpc CreateFleet (CreateFleetRequest) returns (CreateFleetResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-fleets/v3/CreateFleet"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Fleet API (v3)"
+        };
+    }
+
+    // Get fleet
+    //
+    // Retrieves a fleet by its fleet ID.
+    rpc GetFleet (GetFleetRequest) returns (GetFleetResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-fleets/v3/GetFleet"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Fleet API (v3)"
+        };
+    }
+
+    // Get all fleets
+    //
+    // Gets all fleets for a given account.
+    rpc GetAllFleets (GetAllFleetsRequest) returns (GetAllFleetsResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-fleets/v3/GetAllFleets"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Fleet API (v3)"
+        };
+    }
+
+    // Update fleet
+    //
+    // Updates a fleet by its fleet ID and returns the updated fleet.
+    rpc UpdateFleet (UpdateFleetRequest) returns (UpdateFleetResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-fleets/v3/UpdateFleet"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Fleet API (v3)"
+        };
+    }
+
+    // Delete fleet
+    //
+    // Deletes a fleet by its fleet ID and returns the deleted fleet.
+    rpc DeleteFleet (DeleteFleetRequest) returns (DeleteFleetResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-fleets/v3/DeleteFleet"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Fleet API (v3)"
+        };
+    }
+
+    // Trigger optimization
+    //
+    // Triggers a fleet's optimization by its fleet ID.
+    rpc TriggerOptimization (TriggerOptimizationRequest) returns (TriggerOptimizationResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-fleets/v3/TriggerOptimization"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Fleet API (v3)"
+        };
+    }
+}

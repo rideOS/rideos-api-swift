@@ -1,0 +1,187 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.fleet_planner_commons;
+option java_package = "ai.rideos.api.commons.fleet_planner_commons";
+option objc_class_prefix = "FleetPlannerCommons";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/wrappers.proto";
+
+//////////// COMMON OBJECTS ////////////
+
+enum EtaPredictionType {
+    REAL_TIME_TRAFFIC = 0; // Uses up to date, real time traffic speeds from mantis
+    STATIC_TRAFFIC = 1; // Uses the default speeds on the map to generate speeds; this will still make a call to mantis
+
+    // Calculates the haversine distance between points and multiplies by a fudge factor with standard
+    // speed to predict the time cost.
+    HAVERSINE = 2;
+}
+
+// Reason for unresolvable state
+message UnresolvableReason {
+    enum Type {
+        // Unable to determine why the given count of vehicles could not service the task.
+        UNKNOWN = 0;
+        // Vehicles with less than minimum capacity required to service the task.
+        VEHICLES_WITH_LOW_CAPACITY = 1;
+        // The specific vehicle requested is not currently available. This can happen if
+        //   1) the vehicle is unavailable
+        //   2) the vehicle is available but cannot service the task due to some other issue.
+        // Say N is the number of vehicles in the fleet. In case of #1 the vehicle_count is set to N,
+        // while for #2 the vehicle_count for this reason is set to N-1 and another UnresolvableReason with the
+        // appropriate type is added to the UnresolvedTask with vehicle_count 1 (or more if more vehicles have the same
+        // issue).
+        VEHICLES_NOT_MATCHING_DESIRED_ID = 2;
+        // Vehicles that are available and may be capable of servicing the task but are excluded for the task.
+        VEHICLES_EXCLUDED = 3;
+        // The trip is feasible but based on current set of constraints some vehicle in the fleet are not capable of
+        // completing the trip. Examples of such constraints are temporary closure of roads, pickup/dropoff is outside
+        // service area, etc.
+        VEHICLES_CANNOT_COMPLETE_TRIP_ROUTE = 4;
+        // Either the trip's pickup or dropoff points are unreachable from each other or from any point in the map. For
+        // example, the trip's pickup and dropoff may be in different partitions or separate graph components, or the
+        // pickup or dropoff is somewhere completely unroutable like the ocean.
+        TRIP_IS_UNREACHABLE = 5;
+        // There are no vehicles available to service the trip.
+        NO_VEHICLES_ARE_AVAILABLE = 6;
+    }
+
+    // Reason why vehicles could not satisfy a given passenger constraint.
+    Type unresolvable_reason_type = 1;
+
+    // Number of vehicles with the above reason.
+    uint32 vehicle_count = 2;
+
+    message EveryVehicle {
+
+    }
+
+    message VehicleIds {
+        repeated string vehicle_id = 1;
+    }
+
+    message VerboseFlagOff {
+
+    }
+
+    oneof vehicles_returned {
+        // This is set if and only if each and every vehicle in the fleet is unable to service the task for the above
+        // reason.
+        EveryVehicle every_vehicle = 3;
+
+        // The specific vehicle ids corresponding to the above reason.
+        VehicleIds vehicle_ids = 4;
+
+        // This message is set if the verbose flag was not explicitly passed into the request.
+        VerboseFlagOff verbose_flag_off = 5;
+    }
+}
+
+message Status {
+
+    Type type = 1;
+    enum Type {
+        UNKNOWN = 0;
+        SUCCESS = 1;
+        INFEASIBLE_INITIAL_VEHICLE_SOLUTION = 2;
+        INVALID_REQUEST = 3;
+        // Currently we use this internally to rethrow an exception.
+        INTERNAL_ERROR = 4;
+    }
+    string message = 2;
+}
+
+// Configuration for controlling vehicle reassignment.
+message VehicleReassignmentConfiguration {
+    // If set to true, vehicle reassignment happens for trips only if the wait time for pickup decreases or stays the
+    // same.
+    google.protobuf.BoolValue disallow_reassignment_when_wait_time_increases = 1;
+
+    // Wait time threshold in seconds below which vehicle reassignment will not be allowed for a trip.
+    // e.g. If the threshold is set to 2 minutes then any trip which has the vehicle less than or equal to 2 minutes
+    // away from pickup for that trip will not be reassigned to a different vehicle.
+    // If not set, the default value will be 2 Minutes.
+    google.protobuf.Duration wait_time_threshold_for_reassignment = 2;
+
+    // If set to true, this enables the use of TeardownDarpSolver for tearing down initial solutions
+}
+
+// An optimization profile is used in Fleet Planner to determine the type of cost function used.
+enum OptimizationProfile {
+    // RIDE_HAIL is used by default.
+    DEFAULT = 0;
+    // An optimization profile used for Ride Hail. Minimizes rider wait times and ride times.
+    RIDE_HAIL = 1;
+    // An optimization profile used for the goods delivery use case. Minimizes total time vehicle spends traveling.
+    GOODS = 2;
+}
+
+// A collection of resources of the same type.
+message ResourceAndCount {
+    // Identifier for the resource.
+    string resource_id = 1;
+    // Count for the given resource.
+    uint32 count = 2;
+}
+
+// Defines the capacity of the vehicle in terms of a single capacity impact type. To satisfy
+// capacity constraint for a vehicle every capacity limit within it must be satisfied.
+message CapacityLimit {
+    // The type of capacity impact being tracked. E.g. Monetary amount, size, weight, etc.
+    string capacity_impact_type = 1;
+    // Limit for the given capacity impact. In order to check if a vehicle can accommodate a new task,
+    // the capacity impact for resources requested in each assigned and potential tasks
+    // for a given vehicle is summed up and compared against the limit per capacity impact type.
+    uint32 limit = 2;
+}
+
+// Uniquely defines an item and its attributes.
+message Resource {
+    // Unique identifier for a resource. For a generic resource it should identify the type of resource, for a unique
+    // resource it must identify that instance of resource.
+    // E.g.
+    // Generic resource: Kellog's Cornflakes 350g, Organic milk 1 gallon, etc. This is analogous to the barcode
+    // for items in a store.
+    // Unique resource: Passenger user id, Package tracking code, Order Id, etc.
+    string id = 1;
+    // Capacity cost attributes associated with this resource.
+    repeated CapacityImpact resource_capacity_impact = 2;
+}
+
+// Defines the impact of adding a given resource instance to a vehicle in terms of
+// its capacity along a single dimension. The resource can have one or more types
+// of impact to the capacity.
+// This abstracts the mapping from a resource to the capacity that it consumes by
+// translating the impact into a quantifiable value that can be compared across items
+// of different resource types.
+message CapacityImpact {
+    // Type of impact to vehicle capacity that can be attributed to the item. E.g. Dollar amount, size,
+    // weight, etc.
+    string type = 1;
+    // The value associated with this type of cost. E.g. $35, 1000cc, 5Kg, etc.
+    uint32 value = 2;
+}
+
+// Returns the latency for each major part of the Fleet Planner response calculation.
+message Latency {
+    double time_cost_matrix_latency_in_ms = 1;
+    double darper_latency_in_ms = 2;
+    double total_latency_in_ms = 3;
+}

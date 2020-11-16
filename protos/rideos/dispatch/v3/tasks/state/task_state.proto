@@ -1,0 +1,126 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.dispatch.v3.tasks.state;
+option java_package = "ai.rideos.api.dispatch.v3.tasks.state";
+option java_outer_classname = "DispatchTaskState";
+option objc_class_prefix = "DispatchTaskState";
+
+import "google/protobuf/timestamp.proto";
+
+import "rideos/commons/fleet_planner_commons.proto";
+
+// The task state represents the progress made in completing a given task. A task can either be "in progress",
+// "cancelled", or "completed". When in progress, the step completion state can be used to see how far along the task
+// is in being completed. The assignment field can be used to determine whether or not a vehicle has been assigned
+// to a task using our optimization engine.
+message TaskState {
+    oneof stage {
+        InProgressStage in_progress = 1;
+        CancellationStage canceled = 2;
+        ReplacementStage replaced = 3;
+        CompletionStage completed = 4;
+    }
+    Assignment assignment = 5;
+    StepCompletionState step_completion_state = 6;
+    reserved 7;
+    reserved "vehicle_blacklist";
+    // Stores vehicle rejections
+    repeated VehicleRejection vehicle_rejections = 8;
+    ExcludedVehicles excluded_vehicles = 9;
+}
+
+// An assignment may or may not exist for a task and is strictly read-only. If the assignment field is not filled out,
+// this means that the task has not yet been assigned to any vehicle. The list of unresolvable reasons can be used
+// when the task is in the "in progress" stage.
+message Assignment {
+    string assigned_vehicle_id = 1;
+    google.protobuf.Timestamp time_of_last_assignment = 2;
+}
+
+// Task has steps that still need to be completed. This contains any reasons why the task has not been assigned if it
+// has been run through optimization. All step state is within the step completion state
+message InProgressStage {
+    // Optional. If a Fleet Planner run could not resolve this task, the corresponding reasons are listed here.
+    repeated fleet_planner_commons.UnresolvableReason unresolvable_reason = 1;
+}
+
+message ReplacementStage {
+    string replacement_task_id = 1;
+    google.protobuf.Timestamp time_of_replacement = 2;
+}
+
+enum CancelSource {
+    UNKNOWN = 0;
+    REQUESTOR = 1;
+    VEHICLE = 2;
+    OPERATOR = 3;
+    OTHER = 4;
+}
+
+// Task has been cancelled
+message CancellationStage {
+    CancelSource source = 1;
+    string description = 2;
+    google.protobuf.Timestamp time_of_cancellation = 3;
+}
+
+// All task steps have been completed
+message CompletionStage {
+    google.protobuf.Timestamp time_of_completion = 1;
+}
+
+// Defines which steps have been completed and when. Steps must be completed in order, but multiple steps can be completed at once
+message StepCompletionState {
+    oneof task_step_type {
+        PickupDropoffTaskStepState pickup_dropoff_task = 1;
+        OperationalTaskStepState operational_task = 2 [deprecated = true];
+    }
+}
+
+message StepState {
+    string step_id = 1;
+    bool completed = 2;
+    // Time that the step was actually completed
+    google.protobuf.Timestamp time_of_completion = 3;
+    // Estimated time this would be completed by a vehicle, if the estimate exists
+    google.protobuf.Timestamp estimated_time_of_completion = 4;
+}
+
+// Gives the completion state of each step in a pickup/drop-off task. This can be used to determine the progress made
+// to the given task. For example, if "driveToPickup" is completed, then the task is in the "picking up resource" phase.
+message PickupDropoffTaskStepState {
+    StepState drive_to_pickup = 1;
+    StepState pickup_resource = 2;
+    StepState drive_to_dropoff = 3;
+    StepState dropoff_resource = 4;
+}
+
+message OperationalTaskStepState {
+    StepState drive_to_location = 1;
+}
+
+// List of vehicles that cannot be assigned to this task
+message ExcludedVehicles {
+    repeated string vehicle_ids = 1;
+}
+
+message VehicleRejection {
+    string rejecting_vehicle_id = 1;
+    string description = 2;
+}

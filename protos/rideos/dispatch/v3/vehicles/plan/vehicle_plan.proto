@@ -1,0 +1,73 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.dispatch.v3.vehicles.plan;
+option java_package = "ai.rideos.api.dispatch.v3.vehicles.plan";
+option java_outer_classname = "DispatchVehiclePlan";
+option objc_class_prefix = "DispatchVehiclePlan";
+
+import "rideos/dispatch/v3/common/common.proto";
+import "rideos/geo/v1/geo.proto";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/wrappers.proto";
+
+message TaskLocation {
+    // Required: geographical position
+    geo.v1.Position position = 1;
+    // Optional: stop ID (opaque to dispatch engine)
+    google.protobuf.StringValue external_stop_id = 2 [deprecated = true];
+}
+
+message Resource {
+    oneof resource_type {
+        common.UniqueResource unique_resource = 1;
+        common.GenericResourceGroup generic_resource_group = 2;
+    }
+    common.ContactInfo requestor_contact_info = 3 [deprecated = true];
+}
+
+// One segment of a task. A standard pickup/dropoff task contains the following four steps:
+// [DRIVE_TO_PICKUP, LOAD_RESOURCE, DRIVE_TO_DROPOFF, UNLOAD_RESOURCE]
+message Step {
+    string id = 1;
+    TaskLocation location = 2;
+    Resource resource = 3;
+    Action action = 4;
+    // Remaining time is currently filled out for LOAD/UNLOAD_RESOURCE steps
+    google.protobuf.Duration expected_remaining_time = 5;
+    enum Action {
+        UNKNOWN = 0;
+        DRIVE_TO_PICKUP = 1;
+        LOAD_RESOURCE = 2;
+        DRIVE_TO_DROPOFF = 3;
+        UNLOAD_RESOURCE = 4;
+        RELOCATE_DRIVE = 5;
+    }
+}
+
+message Waypoint {
+    string task_id = 1;
+    string step_id = 2;
+    Step step = 3;
+}
+
+// The recommended task assignments for a vehicle, in order of how the steps should be completed
+message VehiclePlan {
+    repeated Waypoint waypoints = 1;
+}

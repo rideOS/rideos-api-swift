@@ -1,0 +1,276 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.dispatch.v3.vehicles;
+option java_package = "ai.rideos.api.dispatch.v3.vehicles";
+option java_outer_classname = "DispatchVehicles";
+option objc_class_prefix = "DispatchVehicles";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+import "rideos/dispatch/v3/common/common.proto";
+import "rideos/dispatch/v3/vehicles/position/vehicle_position.proto";
+import "rideos/geo/v1/geo.proto";
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Vehicle API (v3)"
+        version: "3.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed the correct API Key.";
+        }
+    }
+    responses: {
+        key: "403"
+        value: {
+            description: "Returned when the user does not have permission to access the resource.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+// Optional: Specify when the vehicle is expected to be active, servicing tasks.
+message ShiftConstraint {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["expectedStartTime"]
+        }
+    };
+    // Required. The time the vehicle is expected to be active.
+    google.protobuf.Timestamp expected_start_time = 1;
+    // Optional. If specified, the end position will be considered when assigning tasks for this vehicle.
+    geo.v1.Position expected_end_position = 2;
+    // Optional. After this time, the vehicle will not be considered active, and will not be assigned tasks.
+    google.protobuf.Timestamp expected_end_time = 3;
+}
+
+message Vehicle {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicleId"]
+        }
+    };
+    string vehicle_id = 1;
+    string fleet_id = 2;
+    // A vehicle can have one or more capacity types. For example, a passenger vehicle with 4 extra seats may have
+    // the capacity type "seats" with value 4.
+    repeated common.Capacity vehicle_capacities = 3;
+    common.Inventory inventory = 4;
+    reserved 5; // license_plate
+    reserved 6; // driver_contact_info
+    common.Metadata metadata = 7;
+    reserved 8; // rider_capacity
+    google.protobuf.StringValue routing_profile_id = 9;
+    ShiftConstraint shift_constraint = 10;
+}
+
+// Specify the initial position for the vehicle upon creation.
+// Note this field is required if a shift is specified. Otherwise it is optional.
+// Currently the vehicle may still be created if the vehicle position is invalid.
+message InitialVehiclePosition {
+    vehicles.position.VehiclePosition position = 1;
+    google.protobuf.BoolValue enforce_match = 2;
+}
+
+// Optional: Specify the initial state of the vehicle.
+// Optimization will be triggered if the vehicle's initial state is accepting assignments.
+message InitialVehicleState {
+    bool accepting_assignments = 1;
+}
+
+message CreateVehicleRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicle"]
+        }
+    };
+    Vehicle vehicle = 1;
+    InitialVehiclePosition initial_position = 2;
+    InitialVehicleState initial_vehicle_state = 3;
+}
+
+message CreateVehicleResponse {
+    Vehicle vehicle = 1;
+}
+
+message GetVehicleRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicleId"]
+        }
+    };
+    string vehicle_id = 1;
+}
+
+message GetVehicleResponse {
+    Vehicle vehicle = 1;
+}
+
+message GetVehiclesByIdRequest {
+    repeated string vehicle_ids = 1;
+}
+
+message GetVehiclesInFleetRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["fleetId"]
+        }
+    };
+    string fleet_id = 1;
+}
+
+message GetVehiclesResponse {
+    map<string, Vehicle> vehicles = 1;
+}
+
+message UpdateVehicleRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicleId"]
+        }
+    };
+    string vehicle_id = 1;
+    // Cannot update fleet_id or shift_constraint
+    common.Metadata updated_metadata = 4;
+    InventoryUpdate inventory_update = 5;
+    // New routing profile id to use in all of the vehicle's future plans. Warning: updating routing profile may
+    // invalidate existing vehicle plans by making some of its tasks inaccessible within time windows. Pass an empty
+    // string to clear routing profile.
+    google.protobuf.StringValue updated_routing_profile_id = 6;
+}
+
+message InventoryUpdate {
+    common.Inventory current_inventory = 1;
+    common.Inventory updated_inventory = 2;
+}
+
+message UpdateVehicleResponse {
+    Vehicle vehicle = 1;
+}
+
+message DeleteVehicleRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicleId"]
+        } };
+    string vehicle_id = 1;
+}
+
+message DeleteVehicleResponse {
+    Vehicle vehicle = 1;
+}
+
+service VehicleService {
+    // Create vehicle
+    //
+    // Initialize a vehicle in a given fleet. Vehicles can have various capacities for the different types of things
+    // it can hold. For example, a vehicle that has room for 4 passengers might have a capacity
+    // { "capacityType": "seat", "value": 4 }. Additionally, vehicles can store inventory items which consist of
+    // generic resources. These items can be used to complete tasks that request generic resources.
+    rpc CreateVehicle (CreateVehicleRequest) returns (CreateVehicleResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicles/v3/CreateVehicle"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle API (v3)"
+        };
+    }
+
+    // Get vehicle
+    //
+    // Get a vehicle by its vehicle ID.
+    rpc GetVehicle (GetVehicleRequest) returns (GetVehicleResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicles/v3/GetVehicle"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle API (v3)"
+        };
+    }
+
+    // Get vehicles by ID
+    //
+    // Gets vehicles by list of IDs.
+    rpc GetVehiclesById (GetVehiclesByIdRequest) returns (GetVehiclesResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicles/v3/GetVehiclesById"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle API (v3)"
+        };
+    }
+
+    // Get vehicles in fleet
+    //
+    // Get all vehicles in a given fleet.
+    rpc GetVehiclesInFleet (GetVehiclesInFleetRequest) returns (GetVehiclesResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicles/v3/GetVehiclesInFleet"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle API (v3)"
+        };
+    }
+
+    // Update vehicle
+    //
+    // Updates a vehicle. At the moment, metadata and inventory are the only updates allowed to a vehicle.
+    rpc UpdateVehicle (UpdateVehicleRequest) returns (UpdateVehicleResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicles/v3/UpdateVehicle"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle API (v3)"
+        };
+    }
+
+    // Delete vehicle
+    //
+    // Deletes a vehicle by its vehicle ID. A vehicle cannot be deleted if it is assigned an active task.
+    rpc DeleteVehicle (DeleteVehicleRequest) returns (DeleteVehicleResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicles/v3/DeleteVehicle"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle API (v3)"
+        };
+    }
+}

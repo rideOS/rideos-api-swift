@@ -1,0 +1,469 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.dispatch.v3.tasks;
+option java_package = "ai.rideos.api.dispatch.v3.tasks";
+option java_outer_classname = "DispatchTasks";
+option objc_class_prefix = "DispatchTasks";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+import "rideos/dispatch/v3/common/common.proto";
+import "rideos/dispatch/v3/tasks/state/task_state.proto";
+import "rideos/geo/v1/geo.proto";
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Task API (v3)"
+        version: "3.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed the correct API Key.";
+        }
+    }
+    responses: {
+        key: "403"
+        value: {
+            description: "Returned when the user does not have permission to access the resource.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+message Task {
+    string task_id = 1;
+    string fleet_id = 2;
+    TaskDefinition task_definition = 3;
+    common.Metadata metadata = 4;
+    google.protobuf.Timestamp creation_time = 5;
+    google.protobuf.Timestamp termination_time = 6;
+    state.TaskState state = 7;
+}
+
+message TaskDefinition {
+    oneof task_definition {
+        PickupDropoffTask pickup_dropoff_task = 1;
+        OperationalTask operational_task = 2 [deprecated = true];
+    }
+    DispatchParameters dispatch_parameters = 3;
+    string requestor_id = 4;
+}
+
+message TaskLocation {
+    oneof type {
+        google.protobuf.StringValue stop_id = 1 [deprecated = true];
+        geo.v1.Position position = 2;
+    }
+}
+
+// PickupDropoffTasks can pickup two types of resources: unique resources and generic resources. Unique resources
+// must be picked up from a specific location (e.g. passengers, custom orders). Generic resources are serviced
+// using available vehicle inventory, so a pickup location is not specified. A dropoff location is always specified.
+message PickupDropoffTask {
+    oneof pickup_type {
+        UniqueResourcePickup unique_resource_pickup = 1;
+        GenericResourcePickup generic_resource_pickup = 2;
+    }
+    TaskLocation dropoff = 3;
+}
+
+// Unique resources are a resource that cannot be interchanged with any other resources. The item must be picked up
+// from a specified location and then dropped off. Examples: passengers, custom food orders
+message UniqueResourcePickup {
+    TaskLocation pickup_location = 1;
+    common.UniqueResource unique_resource = 2;
+}
+
+// Generic resources are a resource that can be interchanged with identical items from vehicle inventory. Examples:
+// meal kits, pharmacy items
+message GenericResourcePickup {
+    common.GenericResourceGroup generic_resource_group = 1;
+}
+
+message RiderInfo {
+    common.ContactInfo contact_info = 1;
+}
+
+message OperationalTask {
+    TaskLocation stop = 1;
+    enum Reason {
+        UNKNOWN = 0;
+        REFUEL = 1;
+        REPAIR = 2;
+        CUSTOM = 3;
+    }
+    Reason reason = 2;
+    string description = 3;
+}
+
+// setting for how pooling should be handled for this task
+enum TaskPoolingSetting {
+    // use the fleet's default setting for task pooling
+    FLEET_DEFAULT = 0;
+    // task will not share a vehicle with any others
+    // task may be pooled with other tasks
+    POOLED = 2;
+}
+
+// Options to configure the task assignment
+message DispatchParameters {
+    // Optional maximum duration to wait for an assignment before the task is cancelled
+    google.protobuf.Duration timeout = 1;
+    // Vehicle filters will restrict the task to only be assigned to one of the specified vehicles
+    repeated VehicleFilter vehicle_filter = 2;
+    TimeWindow required_pickup_time_window = 3;
+    TimeWindow required_dropoff_time_window = 4;
+    TaskPoolingSetting pooling_setting = 5;
+    // Set the expected time that the `LOAD_RESOURCE` step will take for this trip. Will override the fleet optimization settings.
+    google.protobuf.Duration expected_pickup_service_time_duration = 6;
+    // Set the expected time that the `UNLOAD_RESOURCE` step will take for this trip. Will override the fleet optimization settings.
+    google.protobuf.Duration expected_dropoff_service_time_duration = 7;
+}
+
+message VehicleFilter {
+    // Force the task to be dispatched to the vehicle with this vehicle id
+    string vehicle_id = 1;
+}
+
+// A time window defines the earliest time before the resource can be picked up or dropped off and the
+// latest allowable time before the resource needs to be picked up or dropped off. Vehicles that can pickup or dropoff
+// the resource before this window will still be assigned, but we will use the earliest pickup time in our ETA calculations for
+// optimization. Vehicles that can only pickup or dropoff the rider after this time will not be assigned.
+// If this value is not provided, the default fleet pickup/dropoff time window will be used.
+message TimeWindow {
+    google.protobuf.Timestamp earliest_time = 1;
+    google.protobuf.Timestamp latest_time = 2;
+}
+
+message CreateTaskRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["taskId", "fleetId", "taskDefinition"]
+        }
+    };
+    string task_id = 1;
+    string fleet_id = 2;
+    TaskDefinition task_definition = 3;
+    common.Metadata metadata = 4;
+    // Check to see whether there should be only 1 active task per requestor id
+    google.protobuf.BoolValue check_one_active_task_per_requestor = 5; // private
+}
+
+message CreateTaskResponse {
+    Task task = 1;
+}
+
+message GetTaskRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["taskId"]
+        }
+    };
+    string task_id = 1;
+}
+
+message GetTaskResponse {
+    Task task = 1;
+}
+
+message GetTasksByIdRequest {
+    repeated string task_ids = 1;
+}
+
+message GetTasksByTimeRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["fleetId"]
+        }
+    };
+    string fleet_id = 1;
+    // Optional. Only tasks that terminated after this timestamp (exclusive) or are still active will be returned, defaults to now.
+    google.protobuf.Timestamp terminated_after = 2;
+    // Optional. Only tasks that were created before this timestamp (inclusive) will be returned, defaults to now.
+    google.protobuf.Timestamp created_before = 3;
+}
+
+message GetTasksByCreationTimeRequest {
+    string fleet_id = 1;
+
+    // The beginning of the time range (inclusive) from which to return data.
+    google.protobuf.Timestamp created_after = 2; // Required
+    // The end of the time range (exclusive) from which to return data.
+    google.protobuf.Timestamp created_before = 3; // Required
+}
+
+message GetTasksByRiderRequest {
+    string rider_id = 1;
+}
+
+message GetTasksResponse {
+    map<string, Task> tasks = 1;
+}
+
+message TaskDefinitionUpdate {
+    oneof updated_task_definition {
+        PickupDropoffTaskUpdate updated_pickup_dropoff_task = 1;
+        // Updating operational tasks is not supported at the moment
+    }
+}
+
+message PickupDropoffTaskUpdate {
+    // Optional
+    TaskLocation updated_pickup = 1;
+    // Optional
+    TaskLocation updated_dropoff = 2;
+}
+
+message UpdateTaskRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["taskId"]
+        }
+    };
+    string task_id = 1;
+    // Optional
+    common.Metadata updated_metadata = 2;
+    // Optional
+    TaskDefinitionUpdate updated_task_definition = 3 [deprecated = true];
+}
+
+message UpdateTaskResponse {
+    Task task = 1;
+}
+
+message ReplaceTaskRequest {
+    string task_id = 1;
+    string replacement_task_id = 2;
+    // One or both of new_pickup & new_dropoff should be specified
+    TaskLocation new_pickup = 3;
+    TaskLocation new_dropoff = 4;
+}
+
+message ReplaceTaskResponse {
+}
+
+message CancelTaskRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["taskId"]
+        }
+    };
+    string task_id = 1;
+    // If known, specify who or what cancelled the task
+    state.CancelSource source = 2;
+    // Optional description that will be stored in the task
+    string description = 3;
+}
+
+message CancelTaskResponse {
+    Task task = 1;
+}
+
+message RejectTaskRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["taskId", "rejectingVehicleId"]
+        }
+    };
+    string task_id = 1;
+    string rejecting_vehicle_id = 2;
+    string description = 3;
+}
+
+message RejectTaskResponse {
+    Task task = 1;
+}
+
+message UnassignTaskRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["taskId", "vehicleId"]
+        }
+    };
+    string task_id = 1;
+    string vehicle_id = 2;
+}
+
+message UnassignTaskResponse {
+    Task task = 1;
+}
+
+message CompleteStepsRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["taskId"]
+        } };
+    string task_id = 1;
+    // List of steps to complete, in order.
+    repeated StepToComplete step_to_complete = 2;
+}
+
+message StepToComplete {
+    string step_id = 1;
+    // Optional - completion timestamp. If not set, the current timestamp will be used.
+    google.protobuf.Timestamp time_of_completion = 2;
+}
+
+message CompleteStepsResponse {
+    Task task = 1;
+}
+
+service TaskService {
+    // Create task
+    //
+    // Creates and returns a new task that can only be completed by the vehicles in the fleet ID provided. Metadata can
+    // be included  in the task. Dispatch parameters such as pickup and dropoff time windows can be set to ensure the
+    // task is completed by a certain time. A list of allowable vehicles to complete the task can also be provided.
+    rpc CreateTask (CreateTaskRequest) returns (CreateTaskResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-tasks/v3/CreateTask"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Task API (v3)"
+        };
+    }
+    // Get task
+    //
+    // Gets a task by its task ID. This returns the current state of the task as well, including the step completion
+    // state and vehicle assignment.
+    rpc GetTask (GetTaskRequest) returns (GetTaskResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-tasks/v3/GetTask"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Task API (v3)"
+        };
+    }
+    // Get tasks by ID
+    //
+    // Gets a map of tasks by their IDs.
+    rpc GetTasksById (GetTasksByIdRequest) returns (GetTasksResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-tasks/v3/GetTasksById"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Task API (v3)"
+        };
+    }
+    // Get tasks by time
+    //
+    // Gets tasks by their creation and completion times. To get all active tasks, simply exclude the `terminated_after`
+    // and `created_before` fields, which will default both of these fields to now.
+    rpc GetTasksByTime (GetTasksByTimeRequest) returns (GetTasksResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-tasks/v3/GetTasksByTime"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Task API (v3)"
+        };
+    }
+
+    // Hidden: only used by our internal metrics
+    rpc GetTasksByCreationTime (GetTasksByCreationTimeRequest) returns (GetTasksResponse) {
+    }
+
+    // Update task
+    //
+    // Updates a task by its task ID. Updating the task metadata is the only update currently supported.
+    rpc UpdateTask (UpdateTaskRequest) returns (UpdateTaskResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-tasks/v3/UpdateTask"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Task API (v3)"
+        };
+    }
+    // Cancel task
+    //
+    // Cancels a task by its task ID.
+    rpc CancelTask (CancelTaskRequest) returns (CancelTaskResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-tasks/v3/CancelTask"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Task API (v3)"
+        };
+    }
+    // Reject task
+    //
+    // Unassign the task from the rejecting vehicle. The task will be reassigned automatically, but never to the
+    // vehicle that rejected it.
+    rpc RejectTask (RejectTaskRequest) returns (RejectTaskResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-tasks/v3/RejectTask"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Task API (v3)"
+        };
+    }
+    // Unassign task
+    //
+    // The task will be reassigned to a vehicle to a vehicle that is accepting rides.
+    // If the given vehicle is still accepting rides, the task may be assigned back to the same vehicle.
+    rpc UnassignTask (UnassignTaskRequest) returns (UnassignTaskResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-tasks/v3/UnassignTask"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Task API (v3)"
+        };
+    }
+    // Complete steps
+    //
+    // Completes one or more steps in a task by the task ID and given step IDs.
+    rpc CompleteSteps (CompleteStepsRequest) returns (CompleteStepsResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-tasks/v3/CompleteSteps"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Task API (v3)"
+        };
+    }
+    rpc GetTasksByRider (GetTasksByRiderRequest) returns (GetTasksResponse) {
+        option deprecated = true;
+    }
+    rpc ReplaceTask (ReplaceTaskRequest) returns (ReplaceTaskResponse) {
+        option deprecated = true;
+    }
+}

@@ -1,0 +1,71 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.pudo.v1;
+option java_package = 'ai.rideos.api.pudo.v1';
+option java_outer_classname = 'PudoProto';
+
+import "rideos/geo/v1/geo.proto";
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+  info: {
+    title: "Pickup Dropoff Service"
+    version: "1.0"
+  }
+  responses: {
+    key: "400"
+    value: {
+      description: "The request was invalid.";
+    }
+  }
+  responses: {
+    key: "401"
+    value: {
+      description: "The request was not correctly authorized. Please ensure you passed in the correct API Key.";
+    }
+  }
+  responses: {
+    key: "429"
+    value: {
+      description: "The rate limit was exceeded, please try again.";
+    }
+  }
+};
+
+message GetRoutablePositionsRequest {
+  repeated geo.v1.Position positions = 1;
+}
+
+message GetRoutablePositionsResponse {
+  repeated geo.v1.Position positions = 1;
+}
+
+service PudoService {
+  rpc GetRoutablePositions (GetRoutablePositionsRequest) returns (GetRoutablePositionsResponse) {
+    option (google.api.http) = {
+      post: "/pudo/v1/GetRoutablePositions"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Get Routable Positions API (Preview)"
+    };
+  }
+}

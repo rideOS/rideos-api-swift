@@ -1,0 +1,226 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.path.v2;
+option java_package = "ai.rideos.api.path.v2";
+option java_outer_classname = "PathProto";
+option objc_class_prefix = "Path";
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/struct.proto";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+
+import "rideos/geo/v1/geo.proto";
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// PathService
+//
+// The PathService provides paths between waypoints.
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Path API"
+        version: "2.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed in the correct API Key.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+service PathService {
+    // Find optimal path between waypoints
+    //
+    // Returns the optimal path for a vehicle to drive between the given waypoints. The path factors in real-time
+    // traffic as well as any provided constraints.
+    rpc GetPath (PathRequest) returns (PathResponse) {
+        option (google.api.http) = {
+                post: "/path/v2/GetPath"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Path API (v2)"
+            };
+    };
+}
+
+message PathRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["waypoints"]
+        }
+    };
+
+    // List of waypoints the path needs to pass through, at least two waypoints are required.
+    repeated Waypoint waypoints = 1;
+
+    // Time of departure from the origin (optional). If not specified, departure time is assumed to be the time at
+    // which the path request is processed.
+    google.protobuf.Timestamp departure_time = 2;
+
+    // Used to be excluded_edges.
+    reserved 3;
+    repeated google.protobuf.Struct excluded_edges = 1003 [deprecated = true];
+
+    // Deprecated. This parameter was only used for analytic use and is unused now.
+    string vehicle_id = 4 [deprecated = true];
+
+    enum GeometryFormat {
+        // Do not return the geometry.
+        NONE = 0;
+        // Return the geometry as LineString object.
+        LINESTRING = 1;
+        // Return the geometry as Google-style polyline using 5 decimal places.
+        POLYLINE = 2;
+    }
+
+    GeometryFormat geometry_format = 5;
+
+    enum CurbApproach {
+        // We will not consider the driving direction when snapping the waypoints.
+        UNSPECIFIED = 0;
+        // We will snap points according to the driving direction of the country.
+        DRIVING_SIDE = 1;
+    }
+
+    CurbApproach curb_approach = 6;
+
+    // Deprecated. Use avoid constraints instead.
+    repeated string blacklist_constraint_ids = 10 [deprecated=true];
+    // Deprecated. Use operational constraints instead.
+    repeated string whitelist_constraint_ids = 11 [deprecated=true];
+
+    // Optional: the path will avoid traversing these constraints. They take precedence over
+    // operational constraints if both are specified.
+    // If a routing profile is specified, constraints are appended to the routing profile constraints.
+    repeated string avoid_constraint_ids = 12;
+
+    // Optional: if provided, this list of identifiers defines an operational domain. The domain consists of the union of all
+    // constraints listed. The path will avoid traversing edges that are not in this operational domain. Avoid constraints
+    // take precedence over operational constraints if both are specified.
+    // If a routing profile is specified, constraints are appended to the routing profile constraints.
+    repeated string operational_constraint_ids = 13;
+
+
+    string basemap_id = 7;
+
+    reserved 1000;
+
+
+
+    // Optional: Routing profile to use for this request.
+    // New profiles can be added and updated via the Routing Profile API.
+    // If no value is provided, the default profile for motorized vehicles (e.g. cars, motorcycles) is used.
+    string routing_profile_id = 1004;
+}
+
+message PathResponse {
+    // List of waypoints the path passes through.
+    repeated Waypoint waypoints = 1;
+
+    // Time of departure from the first waypoint. Will be equal to the request's departure_time if that was set. If not, this
+    // will be equal to the assumed time of departure based on when the request was processed.
+    google.protobuf.Timestamp departure_time = 2;
+
+    // Paths through the waypoints. Will be empty if no path was found.
+    repeated Path paths = 3;
+}
+
+// Waypoint
+message Waypoint {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["position"]
+        }
+    };
+
+    // Position of the vehicle at the waypoint.
+    geo.v1.Position position = 1;
+    // Optional: Heading of the vehicle at the waypoint.
+    google.protobuf.FloatValue heading = 2 [(grpc.gateway.protoc_gen_swagger.options.openapiv2_field).minimum = 0.0, (grpc.gateway.protoc_gen_swagger.options.openapiv2_field).maximum = 360.0];
+
+    enum Type {
+        // (Default) Path will be split in a new leg at this waypoint.
+        STOP = 0;
+        // Path will be continue as the same leg.
+        PASS_THROUGH = 1;
+    }
+    // Optional: Define if the path will be split at waypoints or not, default is to split.
+    Type type = 3;
+    // Optional: Planned time it will take to go through this waypoint, default is 0 seconds.
+    google.protobuf.Duration service_time = 4;
+}
+
+message Leg {
+    oneof geometry {
+        // Geometry for the path encoded as line.
+        rideos.geo.v1.LineString line_string = 1;
+
+        // Google-encoded polyline representing the geometry.
+        // For details, see https://developers.google.com/maps/documentation/utilities/polylinealgorithm
+        string polyline = 2;
+    }
+
+    // Expected length of time required to traverse the leg excluding service times.
+    google.protobuf.Duration travel_time = 3;
+
+    // Deprecated. Use the new mechanism for violated blacklist constraint IDs and violated whitelist instead.
+    reserved 4;
+
+    // Total distance in meters of the Leg
+    double distance = 5;
+
+    // In cases where it is impossible to provide a path without violating any of the excluded_edges in the
+    // request, we will still provide a least-cost path, but this array will contain a list of the XEdgeMatcher
+    // instances that matched any edge in the returned path.
+    repeated string violated_blacklist_constraint_ids = 6;
+
+    // In cases where it is impossible to provide a path without violating the whitelist in the request, we will still
+    // provide a least-cost path, but this flag will be set to true to indicate that the whitelist was violated.
+    bool violated_whitelist = 7;
+}
+
+message Path {
+    // Path split into legs at each stopping waypoint.
+    repeated Leg legs = 1;
+    // Expected length of time required to traverse the Path including service times.
+    google.protobuf.Duration travel_time = 2;
+    // Total distance in meters of the Path (i.e. the sum of the distances of each Leg).
+    double distance = 3;
+}

@@ -1,0 +1,166 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.dispatch.v3.vehicles.state;
+option java_package = "ai.rideos.api.dispatch.v3.vehicles.state";
+option java_outer_classname = "DispatchVehicleState";
+option objc_class_prefix = "DispatchVehicleState";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+import "rideos/dispatch/v3/vehicles/plan/vehicle_plan.proto";
+
+import "google/protobuf/wrappers.proto";
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Vehicle State API (v3)"
+        version: "3.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed the correct API Key.";
+        }
+    }
+    responses: {
+        key: "403"
+        value: {
+            description: "Returned when the user does not have permission to access the resource.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+// Contains the non-physical attributes of the vehicle, including whether or not the vehicle is accepting assignments
+// as well as the vehicle's plan.
+message VehicleState {
+    bool accepting_assignments = 1;
+    vehicles.plan.VehiclePlan vehicle_plan = 2;
+}
+
+message GetVehicleStateRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicleId"]
+        }
+    };
+    string vehicle_id = 1;
+}
+
+message GetVehicleStateResponse {
+    VehicleState vehicle_state = 1;
+}
+
+message UpdateVehicleStateRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicleId"]
+        }
+    };
+    string vehicle_id = 1;
+    // Optional: whether or not the vehicle should be accepting new assignments
+    google.protobuf.BoolValue updated_accepting_assignments = 2;
+}
+
+message UpdateVehicleStateResponse {
+    VehicleState vehicle_state = 1;
+}
+
+message GetVehicleStatesByIdRequest {
+    repeated string vehicle_ids = 1;
+}
+
+message GetAssignableVehicleStatesRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["fleetId"]
+        } };
+    string fleet_id = 1;
+}
+
+message GetVehicleStatesResponse {
+    map<string, VehicleState> vehicle_states = 1;
+}
+
+service VehicleStateService {
+    // Get vehicle state
+    //
+    // Retrieves a vehicle's current state. The response will include the vehicle's assigned tasks and whether or not
+    // the vehicle is accepting assignments.
+    rpc GetVehicleState (GetVehicleStateRequest) returns (GetVehicleStateResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicle-state/v3/GetVehicleState"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle State API (v3)"
+        };
+    }
+
+    // Get vehicle states by ID
+    //
+    // Retrieves a one or more vehicle states by their vehicle IDs
+    rpc GetVehicleStatesById (GetVehicleStatesByIdRequest) returns (GetVehicleStatesResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicle-state/v3/GetVehicleStatesById"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle State API (v3)"
+        };
+    }
+
+    // Get assignable vehicle states
+    //
+    // Retrieves all vehicle states in a given fleet that are accepting new assignments. This means that the vehicle
+    // can be assigned new tasks to its plan.
+    rpc GetAssignableVehicleStates (GetAssignableVehicleStatesRequest) returns (GetVehicleStatesResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicle-state/v3/GetAssignableVehicleStates"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle State API (v3)"
+        };
+    }
+
+    // Update vehicle state
+    //
+    // Update a vehicle's state. Currently, only updating whether or not the vehicle is accepting assignments is allowed.
+    rpc UpdateVehicleState (UpdateVehicleStateRequest) returns (UpdateVehicleStateResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicle-state/v3/UpdateVehicleState"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle State API (v3)"
+        };
+    }
+}

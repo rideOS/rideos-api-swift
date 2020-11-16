@@ -1,0 +1,396 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.fleet.v2;
+option java_package = "ai.rideos.api.fleet.v2";
+option java_outer_classname = "PlanProto";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+import "rideos/commons/fleet_planner_commons.proto";
+import "rideos/descriptors.proto";
+import "rideos/geo/v1/geo.proto";
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// FleetPlanService
+//
+// The FleetPlanService provides a way to retrieve recommendations about which Tasks each vehicle in a fleet should
+// service, and in what order it should service them.
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Fleet Planner API"
+        version: "2.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed in the correct API Key.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+service FleetPlanService {
+    // Creates a set of plan recommendation for a given a current set of vehicles and tasks.
+    rpc GetPlan (GetPlanRequest) returns (GetPlanResponse) {
+        option (google.api.http) = {
+            post: "/fleet/v2/GetPlan"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Fleet Planner API (v2)"
+        };
+    };
+}
+
+message GetPlanRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicles", "tasks"]
+        } };
+
+    // Vehicles for which to provide plan recommendations. 
+    // Map from vehicle identifier to `Vehicle` object.
+    map<string, Vehicle> vehicles = 1;
+
+    // Tasks that the vehicles should service. Should include both tasks that are reflected in the current
+    // vehicle plans, as well as new tasks that need to be incorporated into vehicle plans. Map from task identifier to `Task` object.
+    map<string, Task> tasks = 4;
+
+    // If true, the inital plan may have tasks reassigned to new vehicles when doing so provides a better solution.
+    bool allow_vehicle_reassignment = 5;
+
+    // Specifies the optimization profile to use within the fleet planning algorithm.
+    rideos.fleet_planner_commons.OptimizationProfile optimize_for = 6;
+
+    fleet_planner_commons.EtaPredictionType eta_prediction_type = 7;
+
+    // If provided, this will add an additional step in the response for the amount of time it takes to service
+    // the dropoff.
+    bool include_servicing_dropoff_step_in_plan = 8;
+
+    // Should only be set if allow_vehicle_reassignments is set to true.
+    // Provides configuration to fine tune vehicle reassignments.
+    rideos.fleet_planner_commons.VehicleReassignmentConfiguration vehicle_reassignment_configuration = 9 [(descriptors.available_since_version) = "2020-02-21"];
+
+    // Used as a reference time stamp for the problem, defaults to the system time.
+
+    // If provided, this will add an additional step in the response for the amount of time it takes to service
+    // the pickup.
+    bool include_servicing_pickup_step_in_plan = 10;
+
+    // Defines properties for each resource referenced within the request.
+    repeated rideos.fleet_planner_commons.Resource resource = 13;
+
+    // Flag to include the latencies in the Fleet Planner response calculation.
+
+    bool allow_out_of_bounds_assignments = 15;
+}
+
+message GetPlanResponse {
+    // Recommended plan for each vehicle.
+    repeated VehiclePlanRecommendation recommendations = 1;
+    // Tasks that could not be solved for.
+    repeated UnresolvedTask unresolved_tasks = 2;
+    // Status for the response.
+    // Latency for the response calculation.
+}
+
+// Unresolved task
+message UnresolvedTask {
+    // Id for the unresolved task.
+    string task_id = 1;
+    // One or more reasons why the task was not resolved (not in any particular order) along with the number of vehicles
+    // that match that reason. If a vehicle is not able to satisfy the given task for more than one reason then it will
+    // be included in the vehicle_count for each applicable reason.
+    // i.e. For vehicles V1 and V2, if a task T is unresolved because neither has enough capacity and V2 is excluded
+    // for T, there will be two UnresolvedReasons:
+    //   1) VEHICLES_WITH_LOW_CAPACITY with vehicle_count 2
+    //   2) VEHICLES_EXCLUDED with vehicle_count 1
+    // For vehicles where none of the known Type is applicable, the unresolvable_reason_type will be set to UNKNOWN and
+    // the vehicle_count set to the number of such vehicles.
+    repeated fleet_planner_commons.UnresolvableReason unresolvable_reason = 2;
+}
+
+// Vehicle
+message Vehicle {
+    // The vehicle's position.
+    rideos.geo.v1.Position position = 1;
+
+    // The vehicle's heading.
+    // Measured clockwise from true North - i.e. 0 is true North, 90 is East, 180 is South, 270 is West, etc..
+    google.protobuf.FloatValue heading = 2;
+
+    // The total resource capacity in the vehicle. ex: if the vehicles are transporting passengers, this might be
+    // the number of seats in the vehicle. Each Task should indicate the number of resources required - i.e. the number
+    // of resources that are consumed when the vehicle completes the Task's pickup step and released when the vehicle
+    // completes the Task's dropoff step.
+    google.protobuf.UInt32Value resource_capacity = 3 [deprecated = true];
+
+    // Maximum capacity of the vehicle by CapacityImpact type.
+    repeated rideos.fleet_planner_commons.CapacityLimit capacity = 9;
+
+    // Current inventory of the vehicle by Resource type.
+    repeated rideos.fleet_planner_commons.ResourceAndCount inventory = 10;
+
+    // The vehicle's current plan.
+    VehiclePlan current_plan = 4;
+
+    // Identifier of the vehicle.
+    string vehicle_id = 5;
+
+    // Restrict any task insertions or swaps up to this number leg in the plan. For example, passing a value of 2
+    // for this field will restrict any insertions happening in the first two legs of the plan.
+
+    uint32 restrict_task_insertions_up_to = 6;
+
+    // Specify vehicle-specific constraints directly.
+    // Can not be used at the same time as specifying a `routingProfileId`.
+    RoutingConstraints routing_constraints = 7;
+
+    message RoutingConstraints {
+        repeated string blacklist_constraint_id = 1 [deprecated = true, (descriptors.deprecated_on_version) = "2020-08-08"];
+        repeated string whitelist_constraint_id = 2 [deprecated = true, (descriptors.deprecated_on_version) = "2020-08-08"];
+
+        // Optional: the returned plan will not require the vehicle to traverse these avoid constraints. Avoid constraints
+        // take precedence over operational constraints if both are specified.
+        repeated string avoid_constraint_id = 3 [(descriptors.available_since_version) = "2020-08-08"];
+
+        // Optional: if provided, this list of identifiers defines an operational area. This consists of the
+        // union of all constraints listed. The returned plan will not require the vehicle to leave the operational area.
+        // Avoid constraints take precedence over operational constraints if both are specified.
+        repeated string operational_constraint_id = 4 [(descriptors.available_since_version) = "2020-08-08"];
+    }
+
+    // Time window representing the expected start and end time for a vehicle shift.
+    TimeWindow shift_time_window = 8;
+    // Optional: If specified, the end position will act as a hard constraint when optimizing for this vehicle. 
+
+    // Optional: routing profile ID to be applied to the vehicle's routes.
+    // Cannot be used at the same time as `routingConstraints`.
+    // New profiles can be added and updated via the Routing Profile API.
+    google.protobuf.StringValue routing_profile_id = 11;
+}
+
+// Recommendation for a vehicle
+message VehiclePlanRecommendation {
+    // The identifier of the vehicle for whom this recommendation applies.
+    string vehicle_id = 1;
+
+    // The plan recommendation for the vehicle.
+    VehiclePlan plan_recommendation = 2;
+}
+
+// Vehicle plan
+message VehiclePlan {
+    // The steps to be completed, in order.
+    repeated AssignedStep assigned_steps = 1;
+}
+
+// Assigned step
+message AssignedStep {
+    // Identifier of the corresponding Task.
+    string task_id = 1;
+
+    // Whether this AssignedStep corresponds to the pickup or dropoff step.
+    StepType step_type = 2 [deprecated = true];
+
+    // The remaining time to finish the step in seconds. This value is ignored for initial plans in the request because
+    // they get overwritten with updated values.
+    // For pickup and dropoff steps, this remaining time is just the cumulative time it takes to reach the step. For
+    // servicing dropoff steps, this remaining time is the sum of the cumulative time it takes to reach the step and the
+    // specified duration to complete the step.
+    double remaining_time = 3;
+
+    enum StepType {
+        UNKNOWN = 0;
+        PICKUP = 1;
+        DROPOFF = 2;
+    }
+
+    // Whether this AssignedStep corresponds to a pickup, dropoff, or servicing dropoff step
+    oneof assigned_step_type {
+        Pickup pickup = 4;
+        Dropoff dropoff = 5;
+        ServicingDropoff servicing_dropoff = 6;
+        ServicingPickup servicing_pickup = 7;
+    }
+
+    // Since a Task with a VariablePickupStep could have multiple options for the pickup, Fleet Planner will choose the most optimum and
+    // provide the selected location within this message.
+    message Pickup {
+        // The selected position at which the Step should occur.
+        rideos.geo.v1.Position position = 1;
+
+        // Optional: The heading of the street at the Step position. Used to disambiguate side-of-street.
+        // Measured clockwise from true North - i.e. 0 is true North, 90 is East, 180 is South, 270 is West, etc..
+        google.protobuf.FloatValue heading = 2;
+    }
+
+    message Dropoff {
+
+    }
+
+    message ServicingDropoff {
+        // Remaining time between when the vehicle arrives at the dropoff location and when it is ready to leave the
+        // dropoff location. (ex: "60s" for 60 seconds)
+        google.protobuf.Duration remaining_duration = 1;
+    }
+
+    message ServicingPickup {
+        // Remaining time between when the vehicle arrives at the pickup location and when it is ready to leave the
+        // pickup location. (ex: "60s" for 60 seconds)
+        google.protobuf.Duration remaining_duration = 1;
+    }
+}
+
+// Task
+message Task {
+    // The number of resources (ex: seats for passengers) that are consumed when the pickup step is completed and
+    // released when the dropoff step is completed.
+    google.protobuf.UInt32Value resources_required = 1 [deprecated = true];
+
+    // The resources (ex: passengers, goods, etc) that need to be moved as part of this task.
+    repeated rideos.fleet_planner_commons.ResourceAndCount requested_resource = 7;
+
+    // The pickup step. Will always occur before the dropoff step.
+    PickupStep pickup_step = 2 [deprecated = true];
+
+    oneof pickup_step_type {
+        // The pickup step with a specific pickup location. Will always occur before the dropoff step.
+        PickupStep static_pickup_step = 8;
+
+        // The pickup step where the pickup location is not fixed. The pickup location will be dynamically selected from
+        // inventory within the vehicle itself.
+        VariablePickupStep variable_pickup_step = 9;
+    }
+
+    // The dropoff step. Will always occur after the pickup step.
+    DropoffStep dropoff_step = 3;
+
+    // Whether or not the task should be served as a shared or private ride. If this is set to true, the task will be
+    // served by a vehicle and not pooled with other tasks.
+    bool private_ride = 4;
+
+    repeated string blacklisted_vehicle_id = 5 [deprecated = true, (descriptors.deprecated_on_version) = "2020-08-08"];
+    repeated string whitelisted_vehicle_id = 6 [deprecated = true, (descriptors.deprecated_on_version) = "2020-08-08"];
+
+    // Fleet planner will be constrained to never assign this task to excluded vehicles. Excluded vehicles will
+    // override allowed vehicles.
+    // These are ignored if the pickup has already been completed by any vehicle, denoted by the completedByVehicleId
+    // field in the Task's pickup step.
+    repeated string excluded_vehicle_id = 10 [(descriptors.available_since_version) = "2020-08-08"];
+
+    // Fleet planner will be constrained to only assign this task to allowed vehicles. Allowed vehicles will
+    // be overriden by excluded vehicles.
+    // These are ignored if the pickup has already been completed by any vehicle, denoted by the completedByVehicleId
+    // field in the Task's pickup step.
+    repeated string allowed_vehicle_id = 11 [(descriptors.available_since_version) = "2020-08-08"];
+
+    // A step used to mandate a pickup position from where a pickup must happen. It also contains other pickup related
+    // properties. Used for point-to-point transportation of unique resources. For example, passenger rides, meal
+    // delivery, package delivery, etc.
+    message PickupStep {
+        // The desired position at which the Step should occur.
+        rideos.geo.v1.Position position = 1;
+
+        // Optional: The heading of the street at the Step position. Used to disambiguate side-of-street.
+        // Measured clockwise from true North - i.e. 0 is true North, 90 is East, 180 is South, 270 is West, etc..
+        google.protobuf.FloatValue heading = 2;
+
+        // If the PickupStep has been completed, this should equal the ID of the vehicle that completed the step.
+        // If the PickupStep has not been completed, this should be omitted/empty.
+        string completed_by_vehicle_id = 3;
+
+        // Desired time window within which this step should occur.
+        TimeWindow desired_service_time = 4;
+
+        // If the pickup has not been completed yet, we will assign this task to the desired vehicle id. This is ignored
+        // if the pickup has been completed.
+        string desired_vehicle_id = 6 [deprecated = true];
+
+        // Expected time between when the vehicle arrives at the pickup location and when it is ready to leave the
+        // pickup location. ex: if picking up a rider, this would include the expected duration for the rider to enter
+        // the vehicle.
+        google.protobuf.Duration expected_servicing_pickup_duration = 7;
+
+        // Optional: Flag for whether the pickup time window is 'soft' and can be violated.
+    }
+
+    // A step used to suggest a pickup from vehicles with inventory provided in the request. If the inventory of
+    // the vehicle can satisfy the task then the pickup step will be skipped. Used for warehouse on
+    // wheels style delivery of generic resources. For example, grocery delivery, meat delivery, etc.
+    message VariablePickupStep {
+        // Desired time window within which this step should occur.
+        TimeWindow desired_service_time = 1;
+
+        // Expected time between when the vehicle arrives at the pickup location and when it is ready to leave the
+        // pickup location. ex: if picking up a rider, this would include the expected duration for the rider to enter
+        // the vehicle.
+        google.protobuf.Duration expected_servicing_pickup_duration = 2;
+
+        // Optional: Flag for whether the pickup time window is 'soft' and can be violated.
+    }
+
+    message DropoffStep {
+        // The desired position at which the Step should occur.
+        rideos.geo.v1.Position position = 1;
+
+        // Optional: The heading of the street at the Step position. Used to disambiguate side-of-street.
+        // Measured clockwise from true North - i.e. 0 is true North, 90 is East, 180 is South, 270 is West, etc..
+        google.protobuf.FloatValue heading = 2;
+
+        // Desired time window within which this step should occur.
+        TimeWindow desired_service_time = 3;
+
+        // Expected time between when the vehicle arrives at the dropoff location and when it is ready to leave the
+        // dropoff location. ex: if dropping off a rider, this would include the expected duration for the rider to exit
+        // the vehicle.
+        google.protobuf.Duration expected_servicing_dropoff_duration = 4;
+
+        // Optional: Flag for whether the dropoff time window is 'soft' and can be violated.
+    }
+}
+
+// Time window
+message TimeWindow {
+    // The beginning of the time window. If missing, this will default to negative infinity.
+    google.protobuf.Timestamp start = 1;
+
+    // The end of the time window. If missing, this will default to positive infinity.
+    google.protobuf.Timestamp end = 2;
+}

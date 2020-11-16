@@ -1,0 +1,148 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.dispatch.v3.vehicles.eta;
+option java_package = "ai.rideos.api.dispatch.v3.vehicles.eta";
+option java_outer_classname = "DispatchVehiclesEta";
+option objc_class_prefix = "DispatchVehiclesEta";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+import "rideos/geo/v1/geo.proto";
+import "rideos/dispatch/v3/vehicles/plan/vehicle_plan.proto";
+
+import "google/protobuf/duration.proto";
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Vehicle ETA API (v3)"
+        version: "3.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed the correct API Key.";
+        }
+    }
+    responses: {
+        key: "403"
+        value: {
+            description: "Returned when the user does not have permission to access the resource.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+message StepDuration {
+    enum Status {
+        UNKNOWN = 0;
+        SUCCESS = 1;
+        ROUTE_NOT_FOUND = 2;
+    }
+    google.protobuf.Duration duration = 1;
+    Status status = 2;
+}
+
+// Contains the estimated duration for the given step
+message StepEta {
+    plan.Step.Action step_type = 1;
+    string task_id = 2;
+    string step_id = 3;
+    StepDuration expected_duration = 4;
+}
+
+// Contains the estimated duration for each step in a vehicle's plan, as well as the estimated duration from the last
+// step to the specified position.
+message VehicleEta {
+    string vehicle_id = 1;
+    repeated StepEta step_etas = 2;
+    StepDuration duration_from_last_step_to_position = 3;
+}
+
+message GetVehicleEtasToPositionRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["fleetId", "position"]
+        }
+    };
+    string fleet_id = 1;
+    geo.v1.Position position = 2;
+}
+
+message GetVehicleEtasToPositionResponse {
+    repeated VehicleEta vehicle_etas = 1;
+}
+
+message GetVehicleStepEtasRequest {
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+        json_schema: {
+            required: ["vehicleId"]
+        } };
+    string vehicle_id = 1;
+    plan.VehiclePlan current_plan = 2; // Optional - if not given, the current plan will be read from storage
+}
+
+message GetVehicleStepEtasResponse {
+    repeated StepEta step_etas = 1;
+}
+
+service VehicleEtaService {
+    // Get vehicle ETAs to position
+    //
+    // Returns the ETAs of vehicles accepting trips in a fleet to a given position. These ETAs can be used to calculate
+    // an "eyeball estimate" of how long it would take a rider to be picked up if they requested a trip. The returned
+    // ETAs are broken up by step, with an additional ETA from the last step to the given position. Vehicles that are
+    // currently servicing other trips can be returned and their ETAs will include the ETAs of these queued steps.
+    // For example, if a vehicle still needs to drive and drop off a passenger, its vehicle ETA will include
+    // [ETA of vehicle -> drop-off spot], [ETA to complete drop-off], [ETA of drop-off spot -> given position].
+    rpc GetVehicleEtasToPosition (GetVehicleEtasToPositionRequest) returns (GetVehicleEtasToPositionResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicle-eta/v3/GetVehicleEtasToPosition"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle ETA API (v3)"
+        };
+    }
+
+    // Get vehicle step ETAs
+    //
+    // Returns the estimated duration of each step in a vehicle's plan. The vehicle plan can optionally be provided and
+    // if it is not, we will query for the latest plan for that vehicle. This endpoint can be used to calculate how
+    // long it will take for a vehicle to reach an assigned task's pickup or drop-off.
+    rpc GetVehicleStepEtas (GetVehicleStepEtasRequest) returns (GetVehicleStepEtasResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-vehicle-eta/v3/GetVehicleStepEtas"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Vehicle ETA API (v3)"
+        };
+    }
+}

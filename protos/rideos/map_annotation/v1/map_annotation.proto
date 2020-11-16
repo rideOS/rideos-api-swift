@@ -1,0 +1,265 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.map_annotation.v1;
+option java_package = "ai.rideos.api.map_annotation.v1";
+option java_outer_classname = "MapAnnotationProto";
+option objc_class_prefix = "MapAnnotation";
+
+import "rideos/geo/v1/geo.proto";
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Map Annotations API"
+        version: "1.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "404"
+        value: {
+            description: "The map annotation was not found.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed in the correct API Key.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+
+// Feature
+message Feature {
+    oneof type {
+        // An area marks all intersecting streets to be included into the annotation.
+        geo.v1.Shape area = 1;
+
+        // A path allows to annotate all streets which best match a given polyline. Note that streets which are partially matched will still be included into the annotation.
+        geo.v1.LineString path = 2;
+
+        // Allows to annotate the turn which best matches a given polyline.
+        geo.v1.LineString turn = 3;
+    }
+}
+
+message Criterion {
+    enum Attribute {
+        SPEED_LIMIT = 0;
+    }
+    Attribute attribute = 1;
+
+    enum Function {
+        PRESENT = 0;
+        GREATER_THAN = 1;
+        GREATER_THAN_EQUALS = 2;
+        LESS_THAN = 3;
+        LESS_THAN_EQUALS = 4;
+    }
+    Function function = 2;
+    oneof value {
+        double number_value = 3;
+    }
+}
+
+
+message Annotation {
+    // Partner-provided unique annotations identifier(max 100 characters).
+    string id = 1;
+
+    // List of geometrical features. A feature can either be an `area`, `path` or `turn`, which can be achieved by setting the corresponding property.
+    // An area marks all intersecting streets to be included into the annotation.
+    // A path allows to annotate all streets which best match a given polyline. Note that streets which are partially matched will still be included into the annotation.
+    // Allows to annotate the turn which best matches a given polyline.
+    repeated Feature features = 2;
+
+    // Additional properties for storing partner-specific information about the annotation.
+    map<string, string> properties = 3;
+
+    // List of criteria. Criteria allows for further filtering features by their properties.
+    // For example, only selecting roads with an area that have a speed limit above a certain value
+    repeated Criterion criteria = 4;
+}
+
+
+message AddOrReplaceAnnotationsRequest {
+    // Annotation to add.
+    Annotation annotation = 1;
+}
+
+message AddOrReplaceAnnotationsResponse {
+}
+
+message GetAnnotationRequest {
+    // Partner-provided annotation identifier.
+    string annotation_id = 1;
+}
+
+message GetAnnotationResponse {
+    Annotation annotation = 1;
+}
+
+message GetAllAnnotationIdsRequest {
+}
+
+message GetAllAnnotationIdsResponse {
+    // Identifiers of all annotations for this partner.
+    repeated string annotation_ids = 1;
+}
+
+
+message DeleteAnnotationRequest {
+    // Partner-provided annotation identifier.
+    string annotation_id = 1;
+}
+
+message DeleteAnnotationResponse {
+}
+
+message MatchAnnotationRequest {
+    // Annotation to match.
+    Annotation annotation = 1;
+}
+
+message MatchAnnotationResponse {
+    // Geometries of all edges this annotation matches to.
+    repeated geo.v1.LineString edges_geometry = 1;
+}
+
+message GetAllAnnotationsInAreaRequest {
+    geo.v1.Shape area = 1;
+}
+
+message GetAllAnnotationsInAreaResponse {
+    repeated Annotation annotations = 1;
+}
+
+message GetAnnotationStatusRequest {
+    // Partner-provided annotation identifier.
+    string annotation_id = 1;
+}
+
+enum AnnotationStatus {
+    // Annotation status is unknown, error when fetching the status
+    UNKNOWN = 0;
+
+    // Annotation has been processed and is used by routing
+    ACTIVE = 1;
+
+    // Annotation has been added but no processed yet
+    INACTIVE = 2;
+
+    // Annotation with given identifier does not exist
+    INVALID = 3;
+}
+
+message GetAnnotationStatusResponse {
+    // Annotation status
+    AnnotationStatus status = 1;
+}
+
+service MapAnnotationsService {
+    // Add or replace a map annotation
+    //
+    // Adds a new map annotation with a given partner-defined identifier. If an annotation with the same identifier already exists, it will be overwritten.
+    // If the annotation was added successfully its identifier can be used as a constraint in Path/ETA requests, or referenced in a routing profile.
+    // Annotations require some processing time before affecting routing behavior.
+    rpc AddOrReplaceAnnotation (AddOrReplaceAnnotationsRequest) returns (AddOrReplaceAnnotationsResponse) {
+        option (google.api.http) = {
+                post: "/map-annotation/preview/AddOrReplaceAnnotation"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Map Annotation API (Preview)"
+            };
+    }
+
+    // Retrieve map annotation with a specific identifier
+    rpc GetAnnotation (GetAnnotationRequest) returns (GetAnnotationResponse) {
+        option (google.api.http) = {
+                post: "/map-annotation/preview/GetAnnotation"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Map Annotation API (Preview)"
+            };
+    }
+
+    // Retrieve identifiers of all annotations
+    rpc GetAllAnnotationIds (GetAllAnnotationIdsRequest) returns (GetAllAnnotationIdsResponse) {
+        option (google.api.http) = {
+                post: "/map-annotation/preview/GetAllAnnotationIds"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Map Annotation API (Preview)"
+            };
+    }
+
+    // Delete an annotation with a given identifier
+    //
+    // If an annotation is referenced in any of the Routing APIs after it has been deleted, it will simply be ignored.
+    // Annotations require some processing time before affecting routing behavior.
+    rpc DeleteAnnotation (DeleteAnnotationRequest) returns (DeleteAnnotationResponse) {
+        option (google.api.http) = {
+                post: "/map-annotation/preview/DeleteAnnotation"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Map Annotation API (Preview)"
+            };
+    }
+
+    // Return geometry of all graph edges which match this annotation
+    //
+    // This method can be used as an instant preview of the streets affected by the annotation. The given annotation will not be persisted and cannot be used by Path or ETA APIs. Once the annotation is added the actual result can be different due to regular map updates.
+    rpc TryMatchAnnotation (MatchAnnotationRequest) returns (MatchAnnotationResponse) {
+        option (google.api.http) = {
+                post: "/map-annotation/preview/TryMatchAnnotation"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Map Annotation API (Preview)"
+            };
+    }
+
+    rpc GetAnnotationsInArea (GetAllAnnotationsInAreaRequest) returns (GetAllAnnotationsInAreaResponse);
+
+    // Return current status of the annotation
+    rpc GetAnnotationStatus (GetAnnotationStatusRequest) returns (GetAnnotationStatusResponse) {
+        option (google.api.http) = {
+                post: "/map-annotation/preview/GetAnnotationStatus"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Map Annotation API (Preview)"
+            };
+    }
+}

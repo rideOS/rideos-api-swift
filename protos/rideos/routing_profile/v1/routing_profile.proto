@@ -1,0 +1,178 @@
+/*
+ * Copyright 2018-2019 rideOS, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package rideos.routing_profile.v1;
+option java_package = "ai.rideos.api.routing_profile.v1";
+option java_outer_classname = "RoutingProfileProto";
+option objc_class_prefix = "RoutingProfile";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Routing Profile API"
+        version: "1.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+        }
+    }
+    responses: {
+        key: "404"
+        value: {
+            description: "The routing profile was not found.";
+        }
+    }
+    responses: {
+        key: "409"
+        value: {
+            description: "The routing profile already exists. This usually happens when two concurrent requests try to write the same profile.";
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed in the correct API Key.";
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+};
+message RoutingProfileDefinition {
+    // List of map annotation identifiers used to define avoid constraints. These map annotations should be added first using the Map Annotation API. Invalid annotation identifiers will be ignored by the routing until they become valid.
+    repeated string avoid_constraint_ids = 2;
+    // List of  map annotation identifiers used to define an operational constraints. These map annotations should be added first using the Map Annotation API. Invalid annotation identifiers will be ignored by the routing until they become valid.
+    repeated string operational_constraint_ids = 3;
+}
+
+message AddOrReplaceRoutingProfileRequest {
+    // Partner-defined identifier of the routing profile. Can not include a version, since each profile version is immutable.
+    string id = 1;
+    // The portion of the routing profile that is configurable using this API. Other settings can be changed via our support team.
+    RoutingProfileDefinition routing_profile = 2;
+}
+
+message AddOrReplaceRoutingProfileResponse {
+    // Partner-defined identifier of the routing profile including its version, separated by a colon, e.g. `{profile-id}:{version}`
+    string id = 1;
+}
+
+message GetRoutingProfileRequest {
+    // Partner-defined identifier of the routing profile. Can optionally include a version separated by a colon, e.g. `{profile-id}:{version}`.
+    string id = 1;
+}
+
+message GetRoutingProfileResponse {
+    // Partner-defined identifier of the routing profile including its version, separated by a colon, e.g. `{profile-id}:{version}`
+    string id = 1;
+    // The portion of the routing profile that is configurable using this API. Other settings can be changed via our support team.
+    RoutingProfileDefinition routing_profile = 2;
+}
+
+message AppendConstraintsToRoutingProfileRequest {
+    // Partner-defined identifier of the routing profile. Can not include a version, since each profile version is immutable.
+    string id = 1;
+    // List of map annotation identifiers to be added to avoid constraints. These map annotations should be added first using the Map Annotation API. Invalid annotation identifiers will be ignored by the routing until they become valid.
+    repeated string avoid_constraint_ids = 2;
+    // List of  map annotation identifiers to be added to operational constraints. These map annotations should be added first using the Map Annotation API. Invalid annotation identifiers will be ignored by the routing until they become valid.
+    repeated string operational_constraint_ids = 3;
+}
+
+message AppendConstraintsToRoutingProfileResponse {
+    // Partner-defined identifier of the routing profile including its version, separated by a colon, e.g. `{profile-id}:{version}`
+    string id = 1;
+}
+
+message RemoveConstraintsFromRoutingProfileRequest {
+    // Partner-defined identifier of the routing profile. Can not include a version, since each profile version is immutable.
+    string id = 1;
+    // List of map annotation identifiers to be removed from the list of avoid constraints.
+    repeated string avoid_constraint_ids = 2;
+    // List of  map annotation identifiers to be removed from the list of operational constraints.
+    repeated string operational_constraint_ids = 3;
+}
+
+message RemoveConstraintsFromRoutingProfileResponse {
+    // Partner-defined identifier of the routing profile including its version, separated by a colon, e.g. `{profile-id}:{version}`
+    string id = 1;
+}
+
+service RoutingProfileService {
+    // Add or replace a routing profile
+    //
+    // Adds a new routing profile with a given partner-defined identifier. If a routing profile with the same name exists, it will get overwritten.
+    // The identifier of the routing profile can be referenced in the Path API and ETA API to change the routing behavior.
+    // Changes to routing profiles can take some time until they are reflected in all APIs consistently due to caching.
+    rpc AddOrReplaceRoutingProfile (AddOrReplaceRoutingProfileRequest) returns (AddOrReplaceRoutingProfileResponse) {
+        option (google.api.http) = {
+                post: "/routing-profile/preview/AddOrReplaceRoutingProfile"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Routing Profile API (Preview)"
+            };
+    }
+
+    // Retrieve the content of a routing profile
+    //
+    // This method returns all partner-configurable properties of a routing profile.
+    rpc GetRoutingProfile (GetRoutingProfileRequest) returns (GetRoutingProfileResponse) {
+        option (google.api.http) = {
+                post: "/routing-profile/preview/GetRoutingProfile"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Routing Profile API (Preview)"
+            };
+    }
+
+    // Append constraints to a routing profile
+    //
+    // This method appends constraints to an existing routing profile. This is useful when you do not want to update the whole profile,
+    // but just want to add individual constraints.
+    rpc AppendConstraintsToRoutingProfile (AppendConstraintsToRoutingProfileRequest) returns (AppendConstraintsToRoutingProfileResponse) {
+        option (google.api.http) = {
+                post: "/routing-profile/preview/AppendConstraintsToRoutingProfile"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Routing Profile API (Preview)"
+            };
+    }
+
+    // Remove constraints from a routing profile
+    //
+    // This method removes constraint from an existing routing profile. This is useful when you do not want to update the whole profile,
+    // but just want to remove individual constraints.
+    rpc RemoveConstraintFromRoutingProfile (RemoveConstraintsFromRoutingProfileRequest) returns (RemoveConstraintsFromRoutingProfileResponse) {
+        option (google.api.http) = {
+                post: "/routing-profile/preview/RemoveConstraintsFromRoutingProfile"
+                body: "*"
+            };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+                tags: "Routing Profile API (Preview)"
+            };
+    }
+}
