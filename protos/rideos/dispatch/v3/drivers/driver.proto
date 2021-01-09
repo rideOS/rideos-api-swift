@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+// PRIVATE exclude-file
+
+package rideos.dispatch.v3.drivers;
+option java_package = "ai.rideos.api.dispatch.v3.drivers";
+option java_outer_classname = "DispatchDrivers";
+option objc_class_prefix = "DispatchDrivers";
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/duration.proto";
+
+import "google/api/gapi_annotations.proto";
+import "grpc/gateway/protoc-gen-swagger/options/swagger_annotations.proto";
+import "rideos/commons/fleet_planner_commons.proto";
+import "rideos/dispatch/v3/common/common.proto";
+import "rideos/commons/descriptive_errors_web.proto";
+
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+    info: {
+        title: "Driver API (v3)"
+        version: "3.0"
+    }
+    responses: {
+        key: "400"
+        value: {
+            description: "The request was invalid.";
+            schema: {
+                json_schema: {
+                    ref: ".rideos.commons.api.errors.DescriptiveErrorWebException"
+                }
+            }
+        }
+    }
+    responses: {
+        key: "401"
+        value: {
+            description: "The request was not correctly authorized. Please ensure you passed the correct API Key.";
+        }
+    }
+    responses: {
+        key: "403"
+        value: {
+            description: "Returned when the user does not have permission to access the resource.";
+        }
+    }
+    responses: {
+        key: "409"
+        value: {
+            description: "A field referenced in the request was not found.";
+            schema: {
+                json_schema: {
+                    ref: ".rideos.commons.api.errors.DescriptiveErrorWebException"
+                }
+            }
+        }
+    }
+    responses: {
+        key: "429"
+        value: {
+            description: "The rate limit was exceeded, please try again.";
+        }
+    }
+     responses: {
+        key: "500"
+        value: {
+            description: "Internal server error. Failed to complete request.";
+            schema: {
+                json_schema: {
+                    ref: ".rideos.commons.api.errors.DescriptiveErrorWebException"
+                    default: "errorCode"
+                }
+            }
+        }
+    }
+};
+
+// Used to avoid linting error when importing "rideos/commons/descriptive_errors_web.proto"
+message DoNotUseMessage {
+    rideos.commons.api.errors.DescriptiveErrorWebException dont_use = 1;
+}
+
+message GetCurrentShiftRequest {
+    // NOTE: For now, this should be the driver's phone number in E.164 format
+    string driver_id = 1;
+}
+
+message GetCurrentShiftResponse {
+    string vehicle_id = 1;
+}
+
+service DriverService {
+    // Get current shift
+    //
+    // Gets the driver's current shift.
+    rpc GetCurrentShift (GetCurrentShiftRequest) returns (GetCurrentShiftResponse) {
+        option (google.api.http) = {
+            post: "/dispatch-drivers/v3/GetCurrentShift"
+            body: "*"
+        };
+        option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+            tags: "Driver API (v3)"
+        };
+    }
+}
